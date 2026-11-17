@@ -1,0 +1,506 @@
+<!doctype html>
+<html lang="nb">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Studietimer">
+<meta name="theme-color" content="#f5f6f8" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0f1115" media="(prefers-color-scheme: dark)">
+<meta name="color-scheme" content="light dark">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/icon-180.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<title>Studietimer</title>
+<style>
+:root{
+  --bg:#f5f6f8;--card:#fff;--text:#14161a;--muted:#6b7280;--line:#e5e7eb;--accent:#4f46e5;--danger:#dc2626;--chip:#eef0f3;
+  --sat:env(safe-area-inset-top);--sab:env(safe-area-inset-bottom);--sal:env(safe-area-inset-left);--sar:env(safe-area-inset-right);
+}
+@media (prefers-color-scheme: dark){
+  .toast{background:#374151}
+  :root{--bg:#0f1115;--card:#1a1d23;--text:#f3f4f6;--muted:#9ca3af;--line:#2a2e36;--accent:#818cf8;--danger:#f87171;--chip:#252932}
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;background:var(--bg);color:var(--text);font:16px/1.4 -apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,Helvetica,Arial,sans-serif;overscroll-behavior-y:none}
+body{min-height:100vh;min-height:100dvh}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer;border:0;background:none}
+header{position:sticky;top:0;z-index:5;background:var(--bg);padding:calc(var(--sat) + 10px) calc(var(--sar) + 18px) 8px calc(var(--sal) + 18px)}
+header h1{margin:0;font-size:28px;font-weight:800;letter-spacing:-.02em}
+header .sub{color:var(--muted);font-size:14px}
+main{padding:4px calc(var(--sar) + 16px) calc(var(--sab) + 96px) calc(var(--sal) + 16px);max-width:640px;margin:0 auto}
+.card{background:var(--card);border-radius:18px;padding:16px;margin:0 0 12px;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+.muted{color:var(--muted)}.small{font-size:13px}
+.row{display:flex;align-items:center;gap:12px}
+.spacer{flex:1}
+.big{font-size:44px;font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:-.02em;line-height:1.1}
+.mono{font-variant-numeric:tabular-nums}
+nav.tabs{position:fixed;left:0;right:0;bottom:0;z-index:10;display:flex;background:color-mix(in srgb,var(--card) 92%,transparent);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-top:1px solid var(--line);padding:6px calc(var(--sar) + 6px) calc(var(--sab) + 6px) calc(var(--sal) + 6px)}
+nav.tabs button{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 0;font-size:11px;color:var(--muted);min-height:52px}
+nav.tabs button svg{width:26px;height:26px}
+nav.tabs button.on{color:var(--accent)}
+.emne{display:flex;align-items:center;gap:14px;width:100%;text-align:left;background:var(--card);border-radius:18px;padding:16px;margin:0 0 10px;min-height:72px;border:2px solid transparent;transition:transform .08s}
+.emne:active{transform:scale(.98)}
+.emne.running{border-color:var(--c)}
+.dot{width:14px;height:14px;border-radius:50%;background:var(--c);flex:none}
+.emne .name{font-weight:650;font-size:17px}
+.emne .t{font-variant-numeric:tabular-nums;font-weight:650}
+.play{width:44px;height:44px;border-radius:50%;background:var(--c);display:grid;place-items:center;flex:none;color:#fff}
+.play svg{width:20px;height:20px}
+.runbox{border-left:6px solid var(--c)}
+.btn{background:var(--accent);color:#fff;border-radius:14px;padding:13px 18px;font-weight:650;min-height:48px}
+.btn.sec{background:var(--chip);color:var(--text)}
+.btn.danger,.btn.stop{background:#dc2626;color:#fff}
+.btn.block{width:100%}
+.seg{display:flex;background:var(--chip);border-radius:12px;padding:3px}
+.seg button{flex:1;padding:9px 0;border-radius:10px;font-weight:600;font-size:14px;color:var(--muted)}
+.seg button.on{background:var(--card);color:var(--text);box-shadow:0 1px 2px rgba(0,0,0,.08)}
+.navrow{display:flex;align-items:center;gap:8px;margin:12px 0}
+.iconbtn{width:44px;height:44px;border-radius:12px;background:var(--chip);display:grid;place-items:center;flex:none}
+.iconbtn svg{width:22px;height:22px}
+.navrow .lbl{flex:1;text-align:center;font-weight:650}
+.bar{height:10px;border-radius:5px;background:var(--chip);overflow:hidden}
+.bar>i{display:block;height:100%;background:var(--c,var(--accent));border-radius:5px}
+.list-item{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid var(--line);min-height:56px}
+.list-item:last-child{border-bottom:0}
+.list-item button.edit{flex:1;display:flex;align-items:center;gap:12px;text-align:left;min-height:44px}
+h2{font-size:15px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin:18px 4px 8px;font-weight:700}
+.empty{text-align:center;padding:28px 12px;color:var(--muted)}
+.goal-ring{width:84px;height:84px;flex:none}
+dialog{border:0;border-radius:22px;padding:0;background:var(--card);color:var(--text);width:min(92vw,460px);max-height:88vh}
+dialog::backdrop{background:rgba(0,0,0,.45)}
+dialog form{padding:20px}
+dialog h3{margin:0 0 14px;font-size:20px}
+label.f{display:block;margin:0 0 12px;font-size:14px;color:var(--muted)}
+label.f input,label.f select{display:block;width:100%;margin-top:4px;padding:12px;border-radius:12px;border:1px solid var(--line);background:var(--bg);min-height:48px;font-size:16px}
+.colors{display:flex;flex-wrap:wrap;gap:10px;margin:6px 0 14px}
+.colors button{width:38px;height:38px;border-radius:50%;background:var(--c);border:3px solid transparent}
+.colors button.on{border-color:var(--text)}
+.actions{display:flex;gap:10px;margin-top:8px}
+.actions .btn{flex:1}
+.toast{border:1px solid rgba(255,255,255,.15);box-shadow:0 6px 20px rgba(0,0,0,.35);position:fixed;left:50%;transform:translateX(-50%);bottom:calc(var(--sab) + 84px);background:#111827;color:#fff;padding:10px 16px;border-radius:12px;font-size:14px;z-index:50;opacity:0;transition:opacity .2s;pointer-events:none;max-width:90vw}
+.toast.show{opacity:1}
+svg.chart text{fill:var(--muted);font-size:10px}
+.legend{display:flex;flex-wrap:wrap;gap:8px 14px;margin-top:8px;font-size:13px}
+.legend span{display:flex;align-items:center;gap:6px}
+.archived{opacity:.55}
+.tag{font-size:12px;background:var(--chip);border-radius:8px;padding:2px 8px;color:var(--muted)}
+</style>
+</head>
+<body>
+<header><h1 id="title">I dag</h1><div class="sub" id="subtitle"></div></header>
+<main id="main"></main>
+<nav class="tabs" id="tabs">
+  <button data-tab="timer" class="on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2M10 2h4"/></svg>Timer</button>
+  <button data-tab="stats"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>Oversikt</button>
+  <button data-tab="history"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5M12 7v5l3 2"/></svg>Historikk</button>
+  <button data-tab="settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h10"/></svg>Emner</button>
+</nav>
+
+<dialog id="dlg"><form method="dialog" id="dlgForm"></form></dialog>
+<div class="toast" id="toast"></div>
+<input type="file" id="importFile" accept="application/json,.json" hidden>
+
+<script>
+'use strict';
+/* ====== Data ====== */
+const KEY = 'studietimer.v1';
+const PALETTE = ['#ef4444','#f97316','#eab308','#22c55e','#14b8a6','#3b82f6','#6366f1','#a855f7','#ec4899','#64748b'];
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+const SEED = () => ({
+  version: 1,
+  cats: [
+    {id: uid(), name: 'TMA4400 Matematikk 1', color: '#3b82f6', archived: false},
+    {id: uid(), name: 'TMA4412 Diskret matematikk', color: '#a855f7', archived: false},
+    {id: uid(), name: 'MET430', color: '#22c55e', archived: false},
+    {id: uid(), name: 'MET2010 Anvendt statistikk', color: '#f97316', archived: false},
+    {id: uid(), name: 'BSMØ3005', color: '#ec4899', archived: false},
+  ],
+  sessions: [],           // {id, catId, start, end} (ms timestamps)
+  running: null,          // {catId, start}
+  settings: {goalMin: 0}, // daily goal in minutes, 0 = off
+  lastBackup: 0
+});
+let S;
+function load(){
+  try { S = JSON.parse(localStorage.getItem(KEY)); } catch(e) { S = null; }
+  if (!S || !Array.isArray(S.cats)) { S = SEED(); save(); }
+  S.settings = Object.assign({goalMin: 0}, S.settings || {});
+  S.sessions = S.sessions || [];
+}
+function save(){ localStorage.setItem(KEY, JSON.stringify(S)); }
+const cat = id => S.cats.find(c => c.id === id);
+
+/* ====== Time helpers ====== */
+const DAY = 86400000;
+const startOfDay = t => { const d = new Date(t); d.setHours(0,0,0,0); return d.getTime(); };
+const addDays = (t, n) => { const d = new Date(t); d.setDate(d.getDate() + n); return d.getTime(); };
+const startOfWeek = t => { const d = new Date(startOfDay(t)); const wd = (d.getDay() + 6) % 7; return addDays(d.getTime(), -wd); };
+const startOfMonth = t => { const d = new Date(t); return new Date(d.getFullYear(), d.getMonth(), 1).getTime(); };
+const addMonths = (t, n) => { const d = new Date(t); return new Date(d.getFullYear(), d.getMonth() + n, 1).getTime(); };
+const pad = n => String(n).padStart(2, '0');
+function fmtClock(ms){ const s = Math.max(0, Math.floor(ms/1000)); return `${pad(Math.floor(s/3600))}:${pad(Math.floor(s%3600/60))}:${pad(s%60)}`; }
+function fmtDur(ms){ if (ms > 0 && ms < 60000) return `${Math.round(ms/1000)} s`; const m = Math.round(ms/60000); if (m < 60) return `${m} min`; const h = Math.floor(m/60), r = m%60; return r ? `${h} t ${r} min` : `${h} t`; }
+const MONTHS = ['januar','februar','mars','april','mai','juni','juli','august','september','oktober','november','desember'];
+const WD = ['søn','man','tir','ons','tor','fre','lør'];
+const WDL = ['søndag','mandag','tirsdag','onsdag','torsdag','fredag','lørdag'];
+const fmtDate = t => { const d = new Date(t); return `${WDL[d.getDay()]} ${d.getDate()}. ${MONTHS[d.getMonth()]}`; };
+const fmtHM = t => { const d = new Date(t); return `${pad(d.getHours())}:${pad(d.getMinutes())}`; };
+function isoWeek(t){ const d = new Date(startOfDay(t)); d.setDate(d.getDate() + 3 - (d.getDay() + 6) % 7); const w1 = new Date(d.getFullYear(), 0, 4); return 1 + Math.round(((d - w1) / DAY - 3 + (w1.getDay() + 6) % 7) / 7); }
+const toLocalInput = t => { const d = new Date(t); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; };
+
+/* All sessions including the running one (end = now). */
+function allSessions(){
+  const a = S.sessions.slice();
+  if (S.running) a.push({id: '_run', catId: S.running.catId, start: S.running.start, end: Date.now()});
+  return a;
+}
+/* Total ms per catId within [from, to), sessions clipped (handles sessions over midnight). */
+function totals(from, to){
+  const out = {}; let sum = 0;
+  for (const s of allSessions()){
+    const ms = Math.min(s.end, to) - Math.max(s.start, from);
+    if (ms > 0){ out[s.catId] = (out[s.catId] || 0) + ms; sum += ms; }
+  }
+  return {by: out, sum};
+}
+function streak(){
+  const goal = S.settings.goalMin * 60000;
+  const ok = d => { const t = totals(d, addDays(d, 1)).sum; return goal ? t >= goal : t >= 60000; };
+  let d = startOfDay(Date.now()), n = 0;
+  if (!ok(d)) d = addDays(d, -1);   // today not done yet doesn't break the streak
+  while (ok(d) && n < 3650){ n++; d = addDays(d, -1); }
+  return n;
+}
+
+/* ====== Timer actions ====== */
+function stopRunning(){
+  if (!S.running) return null;
+  const s = {id: uid(), catId: S.running.catId, start: S.running.start, end: Date.now()};
+  S.running = null;
+  if (s.end - s.start >= 5000) S.sessions.push(s); // ignore accidental taps under 5 s
+  save();
+  return s;
+}
+function toggle(catId){
+  const was = S.running && S.running.catId;
+  const saved = stopRunning();
+  if (was !== catId){ S.running = {catId, start: Date.now()}; save(); }
+  if (saved) toast(`Lagret ${fmtDur(saved.end - saved.start)} på ${cat(saved.catId)?.name || 'emne'}`);
+  render();
+}
+
+/* ====== UI ====== */
+let tab = 'timer', statMode = 'week', statAnchor = Date.now(), showArchived = false;
+const $ = s => document.querySelector(s);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const ICON = {
+  play: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15l13-7.5z"/></svg>',
+  stop: '<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>',
+  left: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M15 5l-7 7 7 7"/></svg>',
+  right: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M9 5l7 7-7 7"/></svg>',
+};
+function toast(msg){ const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toast.h); toast.h = setTimeout(() => t.classList.remove('show'), 2200); }
+
+function render(){
+  document.querySelectorAll('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === tab));
+  ({timer: renderTimer, stats: renderStats, history: renderHistory, settings: renderSettings})[tab]();
+}
+
+function ring(frac, color){
+  const r = 36, c = 2 * Math.PI * r, f = Math.min(1, frac);
+  return `<svg class="goal-ring" viewBox="0 0 84 84"><circle cx="42" cy="42" r="${r}" fill="none" stroke="var(--chip)" stroke-width="9"/>
+  <circle cx="42" cy="42" r="${r}" fill="none" stroke="${color}" stroke-width="9" stroke-linecap="round" stroke-dasharray="${c*f} ${c}" transform="rotate(-90 42 42)"/>
+  <text x="42" y="47" text-anchor="middle" font-size="16" font-weight="700" fill="currentColor">${Math.round(frac*100)}%</text></svg>`;
+}
+
+function renderTimer(){
+  $('#title').textContent = 'I dag';
+  $('#subtitle').textContent = fmtDate(Date.now());
+  const d0 = startOfDay(Date.now()), T = totals(d0, d0 + DAY);
+  const goal = S.settings.goalMin * 60000, st = streak();
+  const run = S.running && cat(S.running.catId);
+  let h = `<div class="card row"><div class="spacer"><div class="muted small">Studert i dag</div><div class="big" id="todayTotal">${fmtClock(T.sum)}</div>
+    <div class="muted small">${goal ? `Mål: ${fmtDur(goal)} · ` : ''}🔥 ${st} ${st === 1 ? 'dag' : 'dager'} på rad</div></div>${goal ? ring(T.sum / goal, 'var(--accent)') : ''}</div>`;
+  if (run){
+    h += `<div class="card runbox" style="--c:${run.color}"><div class="muted small">Pågår nå · startet ${fmtHM(S.running.start)}</div>
+      <div class="row"><div class="spacer"><div style="font-weight:700;font-size:18px">${esc(run.name)}</div><div class="big" id="runClock">${fmtClock(Date.now() - S.running.start)}</div></div></div>
+      <button class="btn stop block" data-act="stop" style="margin-top:10px">Stopp og lagre</button></div>`;
+  }
+  h += `<h2>Emner</h2>`;
+  const cats = S.cats.filter(c => !c.archived);
+  if (!cats.length) h += `<div class="empty">Ingen emner ennå. Legg til under «Emner».</div>`;
+  for (const c of cats){
+    const on = S.running && S.running.catId === c.id;
+    h += `<button class="emne${on ? ' running' : ''}" style="--c:${c.color}" data-toggle="${c.id}">
+      <span class="dot"></span><span class="spacer"><span class="name">${esc(c.name)}</span><br><span class="muted small">I dag: <span class="t" data-cattime="${c.id}">${fmtClock(T.by[c.id] || 0)}</span></span></span>
+      <span class="play">${on ? ICON.stop : ICON.play}</span></button>`;
+  }
+  h += backupNag();
+  $('#main').innerHTML = h;
+}
+function backupNag(){
+  const days = S.lastBackup ? Math.floor((Date.now() - S.lastBackup) / DAY) : null;
+  if (S.sessions.length >= 5 && (days === null || days >= 14))
+    return `<div class="card small"><b>Tips:</b> Ta en sikkerhetskopi (Emner → Eksporter). iOS kan slette data fra hjemskjerm-apper. ${days === null ? 'Ingen kopi tatt ennå.' : `Siste kopi: ${days} dager siden.`}</div>`;
+  return '';
+}
+/* Live tick: only update the numbers, not the whole DOM. */
+function tick(){
+  if (tab !== 'timer' || !S.running) return;
+  const d0 = startOfDay(Date.now());
+  if (renderTimer.day && renderTimer.day !== d0){ renderTimer.day = d0; render(); return; }
+  renderTimer.day = d0;
+  const T = totals(d0, d0 + DAY);
+  const a = $('#todayTotal'); if (a) a.textContent = fmtClock(T.sum);
+  const b = $('#runClock'); if (b) b.textContent = fmtClock(Date.now() - S.running.start);
+  const c = document.querySelector(`[data-cattime="${S.running.catId}"]`); if (c) c.textContent = fmtClock(T.by[S.running.catId] || 0);
+}
+
+function renderStats(){
+  $('#title').textContent = 'Oversikt';
+  let from, to, days, label;
+  if (statMode === 'week'){
+    from = startOfWeek(statAnchor); to = addDays(from, 7); days = 7;
+    const e = addDays(to, -1);
+    label = `Uke ${isoWeek(from)} · ${new Date(from).getDate()}.–${new Date(e).getDate()}. ${MONTHS[new Date(e).getMonth()].slice(0,3)}`;
+  } else {
+    from = startOfMonth(statAnchor); to = addMonths(from, 1); days = Math.round((to - from) / DAY);
+    label = `${MONTHS[new Date(from).getMonth()]} ${new Date(from).getFullYear()}`;
+    label = label[0].toUpperCase() + label.slice(1);
+  }
+  $('#subtitle').textContent = label;
+  const T = totals(from, to);
+  const per = [];
+  let max = 0;
+  for (let i = 0; i < days; i++){ const d = addDays(from, i); const t = totals(d, addDays(d, 1)); per.push({d, t}); max = Math.max(max, t.sum); }
+  const active = per.filter(p => p.t.sum > 0).length;
+  let h = `<div class="seg"><button data-mode="week" class="${statMode==='week'?'on':''}">Uke</button><button data-mode="month" class="${statMode==='month'?'on':''}">Måned</button></div>
+    <div class="navrow"><button class="iconbtn" data-nav="-1" aria-label="Forrige">${ICON.left}</button><div class="lbl">${label}</div><button class="iconbtn" data-nav="1" aria-label="Neste">${ICON.right}</button></div>
+    <div class="card"><div class="row"><div class="spacer"><div class="muted small">Totalt</div><div class="big" style="font-size:34px">${fmtDur(T.sum)}</div></div>
+    <div style="text-align:right"><div class="muted small">Snitt per dag</div><div style="font-weight:700;font-size:20px">${fmtDur(T.sum / days)}</div><div class="muted small">${active} aktive dager</div></div></div>
+    ${chart(per, max)}</div>`;
+  const ids = Object.keys(T.by).sort((a, b) => T.by[b] - T.by[a]);
+  h += `<h2>Per emne</h2><div class="card">`;
+  if (!ids.length) h += `<div class="empty">Ingen studietid i denne perioden.</div>`;
+  for (const id of ids){
+    const c = cat(id) || {name: 'Slettet emne', color: '#999'};
+    h += `<div style="margin:6px 0 14px"><div class="row small" style="margin-bottom:5px"><span class="dot" style="--c:${c.color}"></span><span class="spacer" style="font-weight:600">${esc(c.name)}</span><span class="mono">${fmtDur(T.by[id])} · ${Math.round(T.by[id] / T.sum * 100)}%</span></div>
+      <div class="bar" style="--c:${c.color}"><i style="width:${T.by[id] / T.by[ids[0]] * 100}%"></i></div></div>`;
+  }
+  h += `</div>`;
+  $('#main').innerHTML = h;
+}
+/* Stacked SVG bar chart, one bar per day. */
+function chart(per, max){
+  const W = 340, H = 170, pb = 20, pt = 16, n = per.length, gap = n > 10 ? 2 : 8;
+  const bw = (W - gap * (n - 1)) / n;
+  const top = Math.max(max, 3600000);
+  const scaleH = Math.ceil(top / 3600000);
+  let s = `<svg class="chart" viewBox="0 0 ${W} ${H}" width="100%" role="img" aria-label="Studietid per dag">`;
+  for (let k = 1; k <= scaleH; k += Math.max(1, Math.ceil(scaleH / 4))){
+    const y = H - pb - (k * 3600000 / (scaleH * 3600000)) * (H - pb - pt);
+    s += `<line x1="0" x2="${W}" y1="${y}" y2="${y}" stroke="var(--line)" stroke-dasharray="3 3"/><text x="${W}" y="${y - 3}" text-anchor="end">${k} t</text>`;
+  }
+  const today = startOfDay(Date.now());
+  per.forEach((p, i) => {
+    const x = i * (bw + gap);
+    let y = H - pb;
+    const ids = Object.keys(p.t.by);
+    for (const id of ids){
+      const hgt = p.t.by[id] / (scaleH * 3600000) * (H - pb - pt);
+      y -= hgt;
+      s += `<rect x="${x}" y="${y}" width="${bw}" height="${Math.max(hgt, .5)}" fill="${(cat(id) || {color: '#999'}).color}"/>`;
+    }
+    if (!ids.length) s += `<rect x="${x}" y="${H - pb - 2}" width="${bw}" height="2" rx="1" fill="var(--chip)"/>`;
+    const d = new Date(p.d);
+    const lbl = n <= 7 ? WD[d.getDay()] : ((d.getDate() === 1 || d.getDate() % 5 === 0) ? d.getDate() : '');
+    s += `<text x="${x + bw / 2}" y="${H - 5}" text-anchor="middle" ${p.d === today ? 'style="fill:var(--accent);font-weight:700"' : ''}>${lbl}</text>`;
+  });
+  return s + '</svg>';
+}
+
+function renderHistory(){
+  $('#title').textContent = 'Historikk';
+  $('#subtitle').textContent = `${S.sessions.length} økter lagret`;
+  let h = `<button class="btn block" data-act="addSession" style="margin-bottom:12px">+ Legg til økt manuelt</button>`;
+  const ss = S.sessions.slice().sort((a, b) => b.start - a.start);
+  if (!ss.length) h += `<div class="empty">Ingen økter ennå. Start en timer på «Timer»-fanen.</div>`;
+  let cur = null, shown = 0;
+  for (const s of ss){
+    if (shown >= histLimit) { h += `</div><button class="btn sec block" data-act="more">Vis flere</button>`; cur = 'x'; break; }
+    const d = startOfDay(s.start);
+    if (d !== cur){ if (cur !== null) h += `</div>`; cur = d; h += `<h2>${fmtDate(d)} · ${fmtDur(totals(d, d + DAY).sum)}</h2><div class="card" style="padding:4px 16px">`; }
+    const c = cat(s.catId) || {name: 'Slettet emne', color: '#999'};
+    h += `<div class="list-item"><button class="edit" data-edit="${s.id}"><span class="dot" style="--c:${c.color}"></span><span class="spacer"><b>${esc(c.name)}</b><br><span class="muted small">${fmtHM(s.start)}–${fmtHM(s.end)}</span></span><span class="mono">${fmtDur(s.end - s.start)}</span></button></div>`;
+    shown++;
+  }
+  if (cur !== null && cur !== 'x') h += `</div>`;
+  $('#main').innerHTML = h;
+}
+let histLimit = 100;
+
+function renderSettings(){
+  $('#title').textContent = 'Emner';
+  $('#subtitle').textContent = 'Kategorier, mål og sikkerhetskopi';
+  const list = S.cats.filter(c => showArchived || !c.archived);
+  let h = `<div class="card" style="padding:4px 16px">`;
+  if (!list.length) h += `<div class="empty">Ingen emner.</div>`;
+  for (const c of list){
+    const tot = S.sessions.filter(s => s.catId === c.id).reduce((a, s) => a + s.end - s.start, 0);
+    h += `<div class="list-item ${c.archived ? 'archived' : ''}"><button class="edit" data-cat="${c.id}"><span class="dot" style="--c:${c.color}"></span><span class="spacer"><b>${esc(c.name)}</b>${c.archived ? ' <span class="tag">arkivert</span>' : ''}<br><span class="muted small">Totalt ${fmtDur(tot)}</span></span><span class="muted">Endre ›</span></button></div>`;
+  }
+  h += `</div><div class="row" style="margin-bottom:8px"><button class="btn block" data-act="addCat" style="flex:1">+ Nytt emne</button>`;
+  if (S.cats.some(c => c.archived)) h += `<button class="btn sec" data-act="toggleArch">${showArchived ? 'Skjul arkiverte' : 'Vis arkiverte'}</button>`;
+  h += `</div><h2>Daglig mål</h2><div class="card"><label class="f" style="margin:0">Mål per dag (minutter, 0 = av)<input type="number" inputmode="numeric" min="0" max="1440" step="15" id="goalIn" value="${S.settings.goalMin}"></label></div>
+  <h2>Sikkerhetskopi</h2><div class="card"><p class="small muted" style="margin-top:0">Data lagres bare på denne enheten. iOS kan slette data for hjemskjerm-apper som ikke brukes på en stund, så eksporter jevnlig og lagre filen i Filer/iCloud.</p>
+  <div class="row"><button class="btn" data-act="export" style="flex:1">Eksporter (JSON)</button><button class="btn sec" data-act="import" style="flex:1">Importer</button></div>
+  <p class="small muted" style="margin-bottom:0">${S.lastBackup ? `Siste eksport: ${fmtDate(S.lastBackup)} ${fmtHM(S.lastBackup)}` : 'Ingen eksport tatt ennå.'}</p></div>
+  <p class="small muted" style="text-align:center">Studietimer · ingen reklame, ingen sporing · v1</p>`;
+  $('#main').innerHTML = h;
+  $('#goalIn').addEventListener('change', e => { S.settings.goalMin = Math.max(0, Math.min(1440, parseInt(e.target.value, 10) || 0)); save(); toast(S.settings.goalMin ? `Daglig mål: ${fmtDur(S.settings.goalMin * 60000)}` : 'Daglig mål slått av'); });
+}
+
+/* ====== Dialogs ====== */
+const dlg = $('#dlg'), form = $('#dlgForm');
+function openDlg(html, onSubmit, extra){
+  form.innerHTML = html;
+  form.onsubmit = e => {
+    const v = e.submitter && e.submitter.value;
+    if (v === 'cancel') return;
+    if (onSubmit(v) === false) e.preventDefault();
+  };
+  if (extra) extra();
+  dlg.showModal();
+}
+function confirmDlg(msg, okLabel, cb){
+  openDlg(`<h3>Er du sikker?</h3><p>${msg}</p><div class="actions"><button class="btn sec" value="cancel">Avbryt</button><button class="btn danger" value="ok">${okLabel}</button></div>`, v => { if (v === 'ok') cb(); });
+}
+
+function catDialog(c){
+  const isNew = !c;
+  c = c || {name: '', color: PALETTE[S.cats.length % PALETTE.length], archived: false};
+  let color = c.color;
+  openDlg(`<h3>${isNew ? 'Nytt emne' : 'Endre emne'}</h3>
+    <label class="f">Navn<input id="cName" required maxlength="60" value="${esc(c.name)}" placeholder="F.eks. TMA4245 Statistikk" autocomplete="off"></label>
+    <div class="muted small">Farge</div><div class="colors" id="cColors">${PALETTE.map(p => `<button type="button" style="--c:${p}" data-c="${p}" class="${p === color ? 'on' : ''}" aria-label="Farge ${p}"></button>`).join('')}
+      <label style="display:grid;place-items:center;width:38px;height:38px;border-radius:50%;background:var(--chip);font-size:12px" title="Egen farge">+<input type="color" id="cCustom" value="${color}" style="opacity:0;position:absolute;width:1px;height:1px"></label></div>
+    <div class="actions"><button class="btn sec" value="cancel" formnovalidate>Avbryt</button><button class="btn" value="save">Lagre</button></div>
+    ${isNew ? '' : `<div class="actions"><button class="btn sec" value="archive" formnovalidate>${c.archived ? 'Gjenopprett' : 'Arkiver'}</button><button class="btn danger" value="delete" formnovalidate>Slett</button></div>`}`,
+    v => {
+      if (v === 'archive'){ c.archived = !c.archived; if (c.archived && S.running && S.running.catId === c.id) stopRunning(); save(); render(); toast(c.archived ? 'Emnet er arkivert (data beholdes)' : 'Emnet er gjenopprettet'); return; }
+      if (v === 'delete'){
+        const n = S.sessions.filter(s => s.catId === c.id).length;
+        setTimeout(() => confirmDlg(`Slette «${esc(c.name)}» og ${n} tilhørende økt${n === 1 ? '' : 'er'}? Dette kan ikke angres. Vil du beholde statistikken, velg heller «Arkiver».`, 'Slett', () => {
+          if (S.running && S.running.catId === c.id) S.running = null;
+          S.cats = S.cats.filter(x => x.id !== c.id); S.sessions = S.sessions.filter(s => s.catId !== c.id); save(); render(); toast('Emnet er slettet');
+        }), 0);
+        return;
+      }
+      const name = $('#cName').value.trim(); if (!name) return false;
+      c.name = name; c.color = color;
+      if (isNew){ c.id = uid(); S.cats.push(c); }
+      save(); render();
+    },
+    () => {
+      form.querySelectorAll('[data-c]').forEach(b => b.onclick = () => { color = b.dataset.c; form.querySelectorAll('[data-c]').forEach(x => x.classList.toggle('on', x === b)); });
+      $('#cCustom').oninput = e => { color = e.target.value; form.querySelectorAll('[data-c]').forEach(x => x.classList.remove('on')); };
+    });
+}
+
+function sessionDialog(s){
+  const isNew = !s;
+  const cats = S.cats.filter(c => !c.archived || (s && c.id === s.catId));
+  if (!cats.length){ toast('Legg til et emne først'); return; }
+  const now = Date.now();
+  s = s || {catId: (S.running && S.running.catId) || cats[0].id, start: now - 3600000, end: now};
+  openDlg(`<h3>${isNew ? 'Legg til økt' : 'Endre økt'}</h3>
+    <label class="f">Emne<select id="sCat">${cats.map(c => `<option value="${c.id}" ${c.id === s.catId ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></label>
+    <label class="f">Dato<input type="date" id="sDate" required value="${toLocalInput(s.start)}"></label>
+    <div class="row"><label class="f" style="flex:1">Start<input type="time" id="sStart" required value="${fmtHM(s.start)}"></label><label class="f" style="flex:1">Slutt<input type="time" id="sEnd" required value="${fmtHM(s.end)}"></label></div>
+    <div class="muted small" id="sDur" style="margin:-4px 0 12px"></div>
+    <div class="actions"><button class="btn sec" value="cancel" formnovalidate>Avbryt</button><button class="btn" value="save">Lagre</button></div>
+    ${isNew ? '' : `<div class="actions"><button class="btn danger" value="delete" formnovalidate>Slett økt</button></div>`}`,
+    v => {
+      if (v === 'delete'){ setTimeout(() => confirmDlg('Slette denne økten?', 'Slett', () => { S.sessions = S.sessions.filter(x => x.id !== s.id); save(); render(); toast('Økten er slettet'); }), 0); return; }
+      const r = readTimes(); if (!r){ toast('Ugyldig tid'); return false; }
+      s.catId = $('#sCat').value; s.start = r[0]; s.end = r[1];
+      if (isNew){ s.id = uid(); S.sessions.push(s); }
+      save(); render(); toast(`Lagret ${fmtDur(s.end - s.start)}`);
+    },
+    () => {
+      const upd = () => { const r = readTimes(); $('#sDur').textContent = r ? `Varighet: ${fmtDur(r[1] - r[0])}${new Date(r[1]).getDate() !== new Date(r[0]).getDate() ? ' (slutter neste dag)' : ''}` : ''; };
+      ['#sDate', '#sStart', '#sEnd'].forEach(q => $(q).addEventListener('input', upd)); upd();
+    });
+}
+function readTimes(){
+  const d = $('#sDate').value, a = $('#sStart').value, b = $('#sEnd').value;
+  if (!d || !a || !b) return null;
+  const [y, m, dd] = d.split('-').map(Number), [ah, am] = a.split(':').map(Number), [bh, bm] = b.split(':').map(Number);
+  const st = new Date(y, m - 1, dd, ah, am).getTime(); let en = new Date(y, m - 1, dd, bh, bm).getTime();
+  if (en <= st) en = addDays(en, 1); // over midnight
+  if (en - st > DAY) return null;
+  return [st, en];
+}
+
+/* ====== Backup ====== */
+async function exportData(){
+  S.lastBackup = Date.now(); save();
+  const json = JSON.stringify(S, null, 2);
+  const name = `studietimer-backup-${toLocalInput(Date.now())}.json`;
+  const file = new File([json], name, {type: 'application/json'});
+  // iOS standalone: share sheet ("Arkiver i Filer") is the most reliable way out.
+  if (navigator.canShare && navigator.canShare({files: [file]})){
+    try { await navigator.share({files: [file], title: 'Studietimer sikkerhetskopi'}); render(); return; } catch(e) { if (e.name === 'AbortError') { render(); return; } }
+  }
+  const a = document.createElement('a'); a.href = URL.createObjectURL(file); a.download = name; document.body.appendChild(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+  toast('Sikkerhetskopi lastet ned'); render();
+}
+function importData(file){
+  const rd = new FileReader();
+  rd.onload = () => {
+    let d; try { d = JSON.parse(rd.result); } catch(e) { toast('Ugyldig fil'); return; }
+    if (!d || !Array.isArray(d.cats) || !Array.isArray(d.sessions)){ toast('Filen ser ikke ut som en Studietimer-kopi'); return; }
+    confirmDlg(`Erstatte alle nåværende data med kopien (${d.cats.length} emner, ${d.sessions.length} økter)?`, 'Erstatt', () => {
+      S = d; S.settings = Object.assign({goalMin: 0}, S.settings || {}); save(); render(); toast('Data importert');
+    });
+  };
+  rd.readAsText(file);
+}
+
+/* ====== Events ====== */
+document.addEventListener('click', e => {
+  const t = e.target.closest('button,[data-toggle]'); if (!t || t.closest('dialog')) return;
+  if (t.dataset.tab){ tab = t.dataset.tab; histLimit = 100; window.scrollTo(0, 0); render(); return; }
+  if (t.dataset.toggle) return toggle(t.dataset.toggle);
+  if (t.dataset.mode){ statMode = t.dataset.mode; statAnchor = Date.now(); render(); return; }
+  if (t.dataset.nav){ const n = +t.dataset.nav; statAnchor = statMode === 'week' ? addDays(startOfWeek(statAnchor), 7 * n) : addMonths(statAnchor, n); render(); return; }
+  if (t.dataset.edit){ sessionDialog(S.sessions.find(s => s.id === t.dataset.edit)); return; }
+  if (t.dataset.cat){ catDialog(cat(t.dataset.cat)); return; }
+  switch (t.dataset.act){
+    case 'stop': { const s = stopRunning(); if (s) toast(`Lagret ${fmtDur(s.end - s.start)}`); render(); break; }
+    case 'addSession': sessionDialog(); break;
+    case 'addCat': catDialog(); break;
+    case 'toggleArch': showArchived = !showArchived; render(); break;
+    case 'export': exportData(); break;
+    case 'import': $('#importFile').value = ''; $('#importFile').click(); break;
+    case 'more': histLimit += 100; render(); break;
+  }
+});
+$('#importFile').addEventListener('change', e => { const f = e.target.files[0]; if (f) importData(f); });
+dlg.addEventListener('click', e => { if (e.target === dlg) dlg.close(); }); // tap backdrop to close
+// Recompute when the app returns from background / another tab changed data.
+document.addEventListener('visibilitychange', () => { if (!document.hidden){ load(); render(); } });
+window.addEventListener('storage', e => { if (e.key === KEY){ load(); render(); } });
+
+load(); render();
+setInterval(tick, 1000);
+if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
+if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('sw.js').catch(() => {});
+</script>
+</body>
+</html>
