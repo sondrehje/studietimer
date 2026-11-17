@@ -88,6 +88,17 @@ svg.chart text{fill:var(--muted);font-size:10px}
 .legend span{display:flex;align-items:center;gap:6px}
 .archived{opacity:.55}
 .tag{font-size:12px;background:var(--chip);border-radius:8px;padding:2px 8px;color:var(--muted)}
+.btypes{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:4px 0 6px}
+.btype{background:var(--chip);border-radius:16px;padding:12px 4px;font-size:30px;display:flex;flex-direction:column;align-items:center;gap:4px;min-height:86px;border:2px solid transparent}
+.btype span{font-size:14px;font-weight:650}
+.btype.on{border-color:var(--accent)}
+.btype.skip{font-size:22px;color:var(--muted)}
+.list-item.brk{min-height:44px;padding:8px 0}
+.list-item.brk .edit{color:var(--muted);font-size:14px;min-height:36px}
+.bicon{width:22px;text-align:center;flex:none;font-size:17px}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.chip{background:var(--chip);border-radius:10px;padding:4px 10px;font-size:13px}
+.update{position:fixed;left:12px;right:12px;top:calc(var(--sat) + 8px);z-index:60;background:var(--accent);color:#fff;border-radius:14px;padding:12px 16px;font-weight:650;text-align:center;box-shadow:0 6px 20px rgba(0,0,0,.3)}
 </style>
 </head>
 <body>
@@ -107,11 +118,19 @@ svg.chart text{fill:var(--muted);font-size:10px}
 <script>
 'use strict';
 /* ====== Data ====== */
-const KEY = 'studietimer.v1';
+const KEY = 'studietimer.v1';   // storage key kept for compatibility; schema version is S.version
+const SCHEMA = 2, APP_VERSION = 'v2';
+const MIN_SESSION = 5000;        // ignore accidental taps: sessions under 5 s are not saved
+const MIN_BREAK = 5000;          // gaps under 5 s are not counted as breaks
+const MAX_BREAK = 6 * 3600000;   // gaps over 6 h (or across midnight) are not breaks
+const BT = [
+  {k: 'rest', n: 'Hvile', e: '😴'}, {k: 'bathroom', n: 'Toalett', e: '🚻'}, {k: 'sun', n: 'Sol', e: '☀️'},
+  {k: 'meal', n: 'Måltid', e: '🍽️'}, {k: 'other', n: 'Annet', e: '💬'}];
+const btype = k => BT.find(t => t.k === k) || {k: null, n: 'Pause', e: '⏸️'};
 const PALETTE = ['#ef4444','#f97316','#eab308','#22c55e','#14b8a6','#3b82f6','#6366f1','#a855f7','#ec4899','#64748b'];
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 const SEED = () => ({
-  version: 1,
+  version: SCHEMA,
   cats: [
     {id: uid(), name: 'TMA4400 Matematikk 1', color: '#3b82f6', archived: false},
     {id: uid(), name: 'TMA4412 Diskret matematikk', color: '#a855f7', archived: false},
@@ -120,7 +139,9 @@ const SEED = () => ({
     {id: uid(), name: 'BSMØ3005', color: '#ec4899', archived: false},
   ],
   sessions: [],           // {id, catId, start, end} (ms timestamps)
-  running: null,          // {catId, start}
+  breaks: [],             // {id, start, end, type} type: rest|bathroom|sun|meal|other|null
+  running: null,          // {catId, start, prevStop, breakId}
+  lastStop: null,         // ms timestamp of the last time a timer was stopped (start of a possible break)
   settings: {goalMin: 0}, // daily goal in minutes, 0 = off
   lastBackup: 0
 });
@@ -128,8 +149,17 @@ let S;
 function load(){
   try { S = JSON.parse(localStorage.getItem(KEY)); } catch(e) { S = null; }
   if (!S || !Array.isArray(S.cats)) { S = SEED(); save(); }
-  S.settings = Object.assign({goalMin: 0}, S.settings || {});
-  S.sessions = S.sessions || [];
+  migrate(S);
+}
+/* Bring any older backup/localStorage data up to the current schema without dropping anything. */
+function migrate(d){
+  d.settings = Object.assign({goalMin: 0}, d.settings || {});
+  d.sessions = Array.isArray(d.sessions) ? d.sessions : [];
+  d.breaks = Array.isArray(d.breaks) ? d.breaks : [];
+  if (d.lastStop === undefined) d.lastStop = null;
+  if (d.running === undefined) d.running = null;
+  if ((d.version || 1) < SCHEMA){ d.version = SCHEMA; if (d === S) save(); }
+  return d;
 }
 function save(){ localStorage.setItem(KEY, JSON.stringify(S)); }
 const cat = id => S.cats.find(c => c.id === id);
@@ -142,13 +172,14 @@ const startOfWeek = t => { const d = new Date(startOfDay(t)); const wd = (d.getD
 const startOfMonth = t => { const d = new Date(t); return new Date(d.getFullYear(), d.getMonth(), 1).getTime(); };
 const addMonths = (t, n) => { const d = new Date(t); return new Date(d.getFullYear(), d.getMonth() + n, 1).getTime(); };
 const pad = n => String(n).padStart(2, '0');
-function fmtClock(ms){ const s = Math.max(0, Math.floor(ms/1000)); return `${pad(Math.floor(s/3600))}:${pad(Math.floor(s%3600/60))}:${pad(s%60)}`; }
+function fmtClock(ms){ const s = Math.max(0, Math.floor(ms/1000)); return `${Math.floor(s/3600)}:${pad(Math.floor(s%3600/60))}:${pad(s%60)}`; }
 function fmtDur(ms){ if (ms > 0 && ms < 60000) return `${Math.round(ms/1000)} s`; const m = Math.round(ms/60000); if (m < 60) return `${m} min`; const h = Math.floor(m/60), r = m%60; return r ? `${h} t ${r} min` : `${h} t`; }
 const MONTHS = ['januar','februar','mars','april','mai','juni','juli','august','september','oktober','november','desember'];
 const WD = ['søn','man','tir','ons','tor','fre','lør'];
 const WDL = ['søndag','mandag','tirsdag','onsdag','torsdag','fredag','lørdag'];
 const fmtDate = t => { const d = new Date(t); return `${WDL[d.getDay()]} ${d.getDate()}. ${MONTHS[d.getMonth()]}`; };
 const fmtHM = t => { const d = new Date(t); return `${pad(d.getHours())}:${pad(d.getMinutes())}`; };
+const fmtHMS = t => { const d = new Date(t); return `${fmtHM(t)}:${pad(d.getSeconds())}`; };
 function isoWeek(t){ const d = new Date(startOfDay(t)); d.setDate(d.getDate() + 3 - (d.getDay() + 6) % 7); const w1 = new Date(d.getFullYear(), 0, 4); return 1 + Math.round(((d - w1) / DAY - 3 + (w1.getDay() + 6) % 7) / 7); }
 const toLocalInput = t => { const d = new Date(t); return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; };
 
@@ -167,6 +198,19 @@ function totals(from, to){
   }
   return {by: out, sum};
 }
+/* Break totals within [from, to): total ms, count and per type. */
+function breakTotals(from, to){
+  const by = {}; let sum = 0, n = 0;
+  for (const b of S.breaks){
+    const ms = Math.min(b.end, to) - Math.max(b.start, from);
+    if (ms > 0){ const k = b.type || 'none'; by[k] = by[k] || {ms: 0, n: 0}; by[k].ms += ms; by[k].n++; sum += ms; n++; }
+  }
+  return {by, sum, n};
+}
+function breakChips(B){
+  return `<div class="chips">${[...BT.map(t => t.k), 'none'].filter(k => B.by[k]).map(k => { const t = btype(k === 'none' ? null : k);
+    return `<span class="chip">${t.e} ${t.n} ${B.by[k].n}× · <span class="mono">${fmtClock(B.by[k].ms)}</span></span>`; }).join('')}</div>`;
+}
 function streak(){
   const goal = S.settings.goalMin * 60000;
   const ok = d => { const t = totals(d, addDays(d, 1)).sum; return goal ? t >= goal : t >= 60000; };
@@ -179,18 +223,44 @@ function streak(){
 /* ====== Timer actions ====== */
 function stopRunning(){
   if (!S.running) return null;
-  const s = {id: uid(), catId: S.running.catId, start: S.running.start, end: Date.now()};
+  const r = S.running;
+  const s = {id: uid(), catId: r.catId, start: r.start, end: Date.now()};
   S.running = null;
-  if (s.end - s.start >= 5000) S.sessions.push(s); // ignore accidental taps under 5 s
+  if (s.end - s.start >= MIN_SESSION){ S.sessions.push(s); S.lastStop = s.end; }
+  else {
+    // Accidental tap (< 5 s): drop it, and undo the break it opened so the real break keeps running.
+    if (r.breakId) S.breaks = S.breaks.filter(b => b.id !== r.breakId);
+    S.lastStop = r.prevStop || null;
+  }
   save();
-  return s;
+  return s.end - s.start >= MIN_SESSION ? s : null;
+}
+/* Gap since the last stop counts as a break only if it is on the same calendar day and 5 s–6 h long. */
+function openBreak(now){
+  const ls = S.lastStop;
+  if (!ls) return null;
+  const gap = now - ls;
+  if (gap < MIN_BREAK || gap > MAX_BREAK || startOfDay(ls) !== startOfDay(now)) return null;
+  const b = {id: uid(), start: ls, end: now, type: null};
+  S.breaks.push(b);
+  return b;
+}
+function startTimer(catId, switching){
+  const now = Date.now(), prevStop = S.lastStop;
+  const b = switching ? null : openBreak(now);  // switching emne directly = no break
+  S.running = {catId, start: now, prevStop: switching ? null : prevStop, breakId: b ? b.id : null};
+  S.lastStop = null;
+  save();
+  return b;
 }
 function toggle(catId){
   const was = S.running && S.running.catId;
   const saved = stopRunning();
-  if (was !== catId){ S.running = {catId, start: Date.now()}; save(); }
-  if (saved) toast(`Lagret ${fmtDur(saved.end - saved.start)} på ${cat(saved.catId)?.name || 'emne'}`);
+  let b = null;
+  if (was !== catId) b = startTimer(catId, !!saved); // direct switch from a saved session = zero gap
+  if (saved) toast(`Lagret ${fmtClock(saved.end - saved.start)} på ${cat(saved.catId)?.name || 'emne'}`);
   render();
+  if (b) breakDialog(b, true);
 }
 
 /* ====== UI ====== */
@@ -230,6 +300,11 @@ function renderTimer(){
       <div class="row"><div class="spacer"><div style="font-weight:700;font-size:18px">${esc(run.name)}</div><div class="big" id="runClock">${fmtClock(Date.now() - S.running.start)}</div></div></div>
       <button class="btn stop block" data-act="stop" style="margin-top:10px">Stopp og lagre</button></div>`;
   }
+  else if (pauseActive()){
+    h += `<div class="card row"><span class="bicon">⏸️</span><div class="spacer"><div class="muted small">Pause siden ${fmtHM(S.lastStop)}</div><div style="font-weight:700;font-size:22px" class="mono" id="pauseClock">${fmtClock(Date.now() - S.lastStop)}</div></div><div class="muted small" style="max-width:150px;text-align:right">Start et emne, så velger du hva pausen var</div></div>`;
+  }
+  const B = breakTotals(d0, d0 + DAY);
+  if (B.n) h += `<div class="card"><div class="row"><div class="spacer muted small">Pauser i dag</div><div class="mono" style="font-weight:700" id="breakTotal">${fmtClock(B.sum)}</div><div class="muted small">${B.n} stk</div></div>${breakChips(B)}</div>`;
   h += `<h2>Emner</h2>`;
   const cats = S.cats.filter(c => !c.archived);
   if (!cats.length) h += `<div class="empty">Ingen emner ennå. Legg til under «Emner».</div>`;
@@ -242,6 +317,10 @@ function renderTimer(){
   h += backupNag();
   $('#main').innerHTML = h;
 }
+function pauseActive(){
+  const ls = S.lastStop, now = Date.now();
+  return !S.running && ls && now - ls <= MAX_BREAK && startOfDay(ls) === startOfDay(now);
+}
 function backupNag(){
   const days = S.lastBackup ? Math.floor((Date.now() - S.lastBackup) / DAY) : null;
   if (S.sessions.length >= 5 && (days === null || days >= 14))
@@ -250,7 +329,8 @@ function backupNag(){
 }
 /* Live tick: only update the numbers, not the whole DOM. */
 function tick(){
-  if (tab !== 'timer' || !S.running) return;
+  if (tab !== 'timer') return;
+  if (!S.running){ const p = $('#pauseClock'); if (p){ if (pauseActive()) p.textContent = fmtClock(Date.now() - S.lastStop); else render(); } return; }
   const d0 = startOfDay(Date.now());
   if (renderTimer.day && renderTimer.day !== d0){ renderTimer.day = d0; render(); return; }
   renderTimer.day = d0;
@@ -280,10 +360,14 @@ function renderStats(){
   const active = per.filter(p => p.t.sum > 0).length;
   let h = `<div class="seg"><button data-mode="week" class="${statMode==='week'?'on':''}">Uke</button><button data-mode="month" class="${statMode==='month'?'on':''}">Måned</button></div>
     <div class="navrow"><button class="iconbtn" data-nav="-1" aria-label="Forrige">${ICON.left}</button><div class="lbl">${label}</div><button class="iconbtn" data-nav="1" aria-label="Neste">${ICON.right}</button></div>
-    <div class="card"><div class="row"><div class="spacer"><div class="muted small">Totalt</div><div class="big" style="font-size:34px">${fmtDur(T.sum)}</div></div>
+    <div class="card"><div class="row"><div class="spacer"><div class="muted small">Totalt</div><div class="big" style="font-size:34px">${fmtDur(T.sum)}</div><!--exact--></div>
     <div style="text-align:right"><div class="muted small">Snitt per dag</div><div style="font-weight:700;font-size:20px">${fmtDur(T.sum / days)}</div><div class="muted small">${active} aktive dager</div></div></div>
     ${chart(per, max)}</div>`;
   const ids = Object.keys(T.by).sort((a, b) => T.by[b] - T.by[a]);
+  const B = breakTotals(from, to);
+  const totalExact = `<div class="muted small" style="margin-top:-6px">Nøyaktig: <span class="mono" id="statExact">${fmtClock(T.sum)}</span></div>`;
+  h = h.replace('<!--exact-->', totalExact);
+  h += `<h2>Pauser</h2><div class="card">${B.n ? `<div class="row"><div class="spacer"><div class="muted small">Totalt ${B.n} pauser</div><div style="font-weight:700;font-size:20px" class="mono">${fmtClock(B.sum)}</div></div><div style="text-align:right"><div class="muted small">Snitt per pause</div><div class="mono" style="font-weight:700">${fmtClock(B.sum / B.n)}</div></div></div>${breakChips(B)}` : '<div class="empty" style="padding:12px">Ingen registrerte pauser i denne perioden.</div>'}</div>`;
   h += `<h2>Per emne</h2><div class="card">`;
   if (!ids.length) h += `<div class="empty">Ingen studietid i denne perioden.</div>`;
   for (const id of ids){
@@ -325,17 +409,25 @@ function chart(per, max){
 
 function renderHistory(){
   $('#title').textContent = 'Historikk';
-  $('#subtitle').textContent = `${S.sessions.length} økter lagret`;
+  $('#subtitle').textContent = `${S.sessions.length} økter · ${S.breaks.length} pauser`;
   let h = `<button class="btn block" data-act="addSession" style="margin-bottom:12px">+ Legg til økt manuelt</button>`;
-  const ss = S.sessions.slice().sort((a, b) => b.start - a.start);
-  if (!ss.length) h += `<div class="empty">Ingen økter ennå. Start en timer på «Timer»-fanen.</div>`;
+  const items = S.sessions.map(s => ({k: 's', s})).concat(S.breaks.map(b => ({k: 'b', s: b})))
+    .sort((a, b) => b.s.start - a.s.start || (a.k === 's' ? -1 : 1));
+  if (!items.length) h += `<div class="empty">Ingen økter ennå. Start en timer på «Timer»-fanen.</div>`;
   let cur = null, shown = 0;
-  for (const s of ss){
+  for (const it of items){
+    const s = it.s;
     if (shown >= histLimit) { h += `</div><button class="btn sec block" data-act="more">Vis flere</button>`; cur = 'x'; break; }
     const d = startOfDay(s.start);
-    if (d !== cur){ if (cur !== null) h += `</div>`; cur = d; h += `<h2>${fmtDate(d)} · ${fmtDur(totals(d, d + DAY).sum)}</h2><div class="card" style="padding:4px 16px">`; }
-    const c = cat(s.catId) || {name: 'Slettet emne', color: '#999'};
-    h += `<div class="list-item"><button class="edit" data-edit="${s.id}"><span class="dot" style="--c:${c.color}"></span><span class="spacer"><b>${esc(c.name)}</b><br><span class="muted small">${fmtHM(s.start)}–${fmtHM(s.end)}</span></span><span class="mono">${fmtDur(s.end - s.start)}</span></button></div>`;
+    if (d !== cur){ if (cur !== null) h += `</div>`; cur = d; const B = breakTotals(d, d + DAY);
+      h += `<h2>${fmtDate(d)} · ${fmtClock(totals(d, d + DAY).sum)}${B.n ? ` <span style="text-transform:none;font-weight:600">· pauser ${fmtClock(B.sum)}</span>` : ''}</h2><div class="card" style="padding:4px 16px">`; }
+    if (it.k === 'b'){
+      const t = btype(s.type);
+      h += `<div class="list-item brk"><button class="edit" data-brk="${s.id}"><span class="bicon">${t.e}</span><span class="spacer">${t.n}${s.type ? '' : ' <span class="tag">velg type</span>'} · ${fmtHM(s.start)}–${fmtHM(s.end)}</span><span class="mono">${fmtClock(s.end - s.start)}</span></button></div>`;
+    } else {
+      const c = cat(s.catId) || {name: 'Slettet emne', color: '#999'};
+      h += `<div class="list-item"><button class="edit" data-edit="${s.id}"><span class="dot" style="--c:${c.color}"></span><span class="spacer"><b>${esc(c.name)}</b><br><span class="muted small">${fmtHMS(s.start)}–${fmtHMS(s.end)}</span></span><span class="mono">${fmtClock(s.end - s.start)}</span></button></div>`;
+    }
     shown++;
   }
   if (cur !== null && cur !== 'x') h += `</div>`;
@@ -359,7 +451,7 @@ function renderSettings(){
   <h2>Sikkerhetskopi</h2><div class="card"><p class="small muted" style="margin-top:0">Data lagres bare på denne enheten. iOS kan slette data for hjemskjerm-apper som ikke brukes på en stund, så eksporter jevnlig og lagre filen i Filer/iCloud.</p>
   <div class="row"><button class="btn" data-act="export" style="flex:1">Eksporter (JSON)</button><button class="btn sec" data-act="import" style="flex:1">Importer</button></div>
   <p class="small muted" style="margin-bottom:0">${S.lastBackup ? `Siste eksport: ${fmtDate(S.lastBackup)} ${fmtHM(S.lastBackup)}` : 'Ingen eksport tatt ennå.'}</p></div>
-  <p class="small muted" style="text-align:center">Studietimer · ingen reklame, ingen sporing · v1</p>`;
+  <p class="small muted" style="text-align:center">Studietimer · ingen reklame, ingen sporing · ${APP_VERSION}</p>`;
   $('#main').innerHTML = h;
   $('#goalIn').addEventListener('change', e => { S.settings.goalMin = Math.max(0, Math.min(1440, parseInt(e.target.value, 10) || 0)); save(); toast(S.settings.goalMin ? `Daglig mål: ${fmtDur(S.settings.goalMin * 60000)}` : 'Daglig mål slått av'); });
 }
@@ -420,7 +512,7 @@ function sessionDialog(s){
   openDlg(`<h3>${isNew ? 'Legg til økt' : 'Endre økt'}</h3>
     <label class="f">Emne<select id="sCat">${cats.map(c => `<option value="${c.id}" ${c.id === s.catId ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></label>
     <label class="f">Dato<input type="date" id="sDate" required value="${toLocalInput(s.start)}"></label>
-    <div class="row"><label class="f" style="flex:1">Start<input type="time" id="sStart" required value="${fmtHM(s.start)}"></label><label class="f" style="flex:1">Slutt<input type="time" id="sEnd" required value="${fmtHM(s.end)}"></label></div>
+    <div class="row"><label class="f" style="flex:1">Start<input type="time" id="sStart" step="1" required value="${fmtHMS(s.start)}"></label><label class="f" style="flex:1">Slutt<input type="time" id="sEnd" step="1" required value="${fmtHMS(s.end)}"></label></div>
     <div class="muted small" id="sDur" style="margin:-4px 0 12px"></div>
     <div class="actions"><button class="btn sec" value="cancel" formnovalidate>Avbryt</button><button class="btn" value="save">Lagre</button></div>
     ${isNew ? '' : `<div class="actions"><button class="btn danger" value="delete" formnovalidate>Slett økt</button></div>`}`,
@@ -429,21 +521,36 @@ function sessionDialog(s){
       const r = readTimes(); if (!r){ toast('Ugyldig tid'); return false; }
       s.catId = $('#sCat').value; s.start = r[0]; s.end = r[1];
       if (isNew){ s.id = uid(); S.sessions.push(s); }
-      save(); render(); toast(`Lagret ${fmtDur(s.end - s.start)}`);
+      save(); render(); toast(`Lagret ${fmtClock(s.end - s.start)}`);
     },
     () => {
-      const upd = () => { const r = readTimes(); $('#sDur').textContent = r ? `Varighet: ${fmtDur(r[1] - r[0])}${new Date(r[1]).getDate() !== new Date(r[0]).getDate() ? ' (slutter neste dag)' : ''}` : ''; };
+      const upd = () => { const r = readTimes(); $('#sDur').textContent = r ? `Varighet: ${fmtClock(r[1] - r[0])}${new Date(r[1]).getDate() !== new Date(r[0]).getDate() ? ' (slutter neste dag)' : ''}` : ''; };
       ['#sDate', '#sStart', '#sEnd'].forEach(q => $(q).addEventListener('input', upd)); upd();
     });
 }
 function readTimes(){
   const d = $('#sDate').value, a = $('#sStart').value, b = $('#sEnd').value;
   if (!d || !a || !b) return null;
-  const [y, m, dd] = d.split('-').map(Number), [ah, am] = a.split(':').map(Number), [bh, bm] = b.split(':').map(Number);
-  const st = new Date(y, m - 1, dd, ah, am).getTime(); let en = new Date(y, m - 1, dd, bh, bm).getTime();
+  const [y, m, dd] = d.split('-').map(Number), [ah, am, as = 0] = a.split(':').map(Number), [bh, bm, bs = 0] = b.split(':').map(Number);
+  const st = new Date(y, m - 1, dd, ah, am, as).getTime(); let en = new Date(y, m - 1, dd, bh, bm, bs).getTime();
   if (en <= st) en = addDays(en, 1); // over midnight
   if (en - st > DAY) return null;
   return [st, en];
+}
+
+/* Break picker: shown right after a timer starts (timer already running), and when editing a break. */
+function breakDialog(b, fresh){
+  openDlg(`<h3>${fresh ? 'Hva gjorde du i pausen?' : 'Endre pause'}</h3>
+    <p class="muted small" style="margin-top:-6px">Pause ${fmtHMS(b.start)}–${fmtHMS(b.end)} · <b class="mono" style="color:var(--text)">${fmtClock(b.end - b.start)}</b>${fresh ? '<br>Timeren går allerede.' : ''}</p>
+    <div class="btypes">${BT.map(t => `<button class="btype${b.type === t.k ? ' on' : ''}" value="t:${t.k}" data-btype="${t.k}">${t.e}<span>${t.n}</span></button>`).join('')}
+      <button class="btype skip" value="skip">⏭️<span>${fresh ? 'Hopp over' : 'Ingen type'}</span></button></div>
+    ${fresh ? '' : `<div class="actions"><button class="btn sec" value="cancel" formnovalidate>Avbryt</button><button class="btn danger" value="delete" formnovalidate>Slett pause</button></div>`}`,
+    v => {
+      const x = S.breaks.find(y => y.id === b.id); if (!x) return;
+      if (v === 'delete'){ setTimeout(() => confirmDlg('Slette denne pausen?', 'Slett', () => { S.breaks = S.breaks.filter(y => y.id !== b.id); save(); render(); toast('Pausen er slettet'); }), 0); return; }
+      if (v === 'skip'){ x.type = null; save(); render(); return; }
+      if (v && v.startsWith('t:')){ x.type = v.slice(2); save(); render(); toast(`${btype(x.type).e} ${btype(x.type).n}: ${fmtClock(x.end - x.start)}`); }
+    });
 }
 
 /* ====== Backup ====== */
@@ -465,8 +572,9 @@ function importData(file){
   rd.onload = () => {
     let d; try { d = JSON.parse(rd.result); } catch(e) { toast('Ugyldig fil'); return; }
     if (!d || !Array.isArray(d.cats) || !Array.isArray(d.sessions)){ toast('Filen ser ikke ut som en Studietimer-kopi'); return; }
-    confirmDlg(`Erstatte alle nåværende data med kopien (${d.cats.length} emner, ${d.sessions.length} økter)?`, 'Erstatt', () => {
-      S = d; S.settings = Object.assign({goalMin: 0}, S.settings || {}); save(); render(); toast('Data importert');
+    const nb = Array.isArray(d.breaks) ? d.breaks.length : 0;
+    confirmDlg(`Erstatte alle nåværende data med kopien (${d.cats.length} emner, ${d.sessions.length} økter, ${nb} pauser)?`, 'Erstatt', () => {
+      S = migrate(d); save(); render(); toast('Data importert');
     });
   };
   rd.readAsText(file);
@@ -480,9 +588,11 @@ document.addEventListener('click', e => {
   if (t.dataset.mode){ statMode = t.dataset.mode; statAnchor = Date.now(); render(); return; }
   if (t.dataset.nav){ const n = +t.dataset.nav; statAnchor = statMode === 'week' ? addDays(startOfWeek(statAnchor), 7 * n) : addMonths(statAnchor, n); render(); return; }
   if (t.dataset.edit){ sessionDialog(S.sessions.find(s => s.id === t.dataset.edit)); return; }
+  if (t.dataset.brk){ const b = S.breaks.find(x => x.id === t.dataset.brk); if (b) breakDialog(b, false); return; }
   if (t.dataset.cat){ catDialog(cat(t.dataset.cat)); return; }
   switch (t.dataset.act){
-    case 'stop': { const s = stopRunning(); if (s) toast(`Lagret ${fmtDur(s.end - s.start)}`); render(); break; }
+    case 'stop': { const s = stopRunning(); toast(s ? `Lagret ${fmtClock(s.end - s.start)} · pausen starter nå` : 'Under 5 s – ikke lagret'); render(); break; }
+    case 'reload': location.reload(); break;
     case 'addSession': sessionDialog(); break;
     case 'addCat': catDialog(); break;
     case 'toggleArch': showArchived = !showArchived; render(); break;
@@ -500,7 +610,18 @@ window.addEventListener('storage', e => { if (e.key === KEY){ load(); render(); 
 load(); render();
 setInterval(tick, 1000);
 if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
-if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('sw.js').catch(() => {});
+if ('serviceWorker' in navigator && location.protocol !== 'file:'){
+  const hadController = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.register('sw.js').then(reg => {
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) reg.update().catch(() => {}); });
+  }).catch(() => {});
+  // A new service worker took over (new version deployed): offer a reload.
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (!hadController || $('#updBar')) return;
+    const b = document.createElement('button'); b.id = 'updBar'; b.className = 'update'; b.dataset.act = 'reload';
+    b.textContent = 'Ny versjon tilgjengelig – last inn på nytt'; document.body.appendChild(b);
+  });
+}
 </script>
 </body>
 </html>
